@@ -1,126 +1,50 @@
-""" This module contains functions for cloning a Git repository to a local path. """
-
 import asyncio
 from dataclasses import dataclass
+from urllib.parse import urlparse, urlunparse
 
 from gitingest.utils import async_timeout
 
 TIMEOUT: int = 20
-
+HARDCODED_PAT_USERNAME = ""
+HARDCODED_PAT = ""
 
 @dataclass
 class CloneConfig:
-    """
-    Configuration for cloning a Git repository.
-
-    This class holds the necessary parameters for cloning a repository to a local path, including
-    the repository's URL, the target local path, and optional parameters for a specific commit or branch.
-
-    Attributes
-    ----------
-    url : str
-        The URL of the Git repository to clone.
-    local_path : str
-        The local directory where the repository will be cloned.
-    commit : str | None, optional
-        The specific commit hash to check out after cloning (default is None).
-    branch : str | None, optional
-        The branch to clone (default is None).
-    """
-
     url: str
     local_path: str
     commit: str | None = None
     branch: str | None = None
+    git_username: str | None = None
+    git_pat: str | None = None
 
-
-@async_timeout(TIMEOUT)
-async def clone_repo(config: CloneConfig) -> tuple[bytes, bytes]:
+async def _check_repo_exists(url: str, git_username: str | None = None, git_pat: str | None = None) -> bool:
     """
-    Clone a repository to a local path based on the provided configuration.
-
-    This function handles the process of cloning a Git repository to the local file system.
-    It can clone a specific branch or commit if provided, and it raises exceptions if
-    any errors occur during the cloning process.
-
-    Parameters
-    ----------
-    config : CloneConfig
-        A dictionary containing the following keys:
-            - url (str): The URL of the repository.
-            - local_path (str): The local path to clone the repository to.
-            - commit (Optional[str]): The specific commit hash to checkout.
-            - branch (Optional[str]): The branch to clone. Defaults to 'main' or 'master' if not provided.
-
-    Returns
-    -------
-    tuple[bytes, bytes]
-        A tuple containing the stdout and stderr of the Git commands executed.
-
-    Raises
-    ------
-    ValueError
-        If the 'url' or 'local_path' parameters are missing, or if the repository is not found.
+    Check if a Git repository exists using Git-specific curl commands.
     """
-    # Extract and validate query parameters
-    url: str = config.url
-    local_path: str = config.local_path
-    commit: str | None = config.commit
-    branch: str | None = config.branch
-
-    if not url:
-        raise ValueError("The 'url' parameter is required.")
-
-    if not local_path:
-        raise ValueError("The 'local_path' parameter is required.")
-
-    # Check if the repository exists
-    if not await _check_repo_exists(url):
-        raise ValueError("Repository not found, make sure it is public")
-
-    if commit:
-        # Scenario 1: Clone and checkout a specific commit
-        # Clone the repository without depth to ensure full history for checkout
-        clone_cmd = ["git", "clone", "--single-branch", url, local_path]
-        await _run_git_command(*clone_cmd)
-
-        # Checkout the specific commit
-        checkout_cmd = ["git", "-C", local_path, "checkout", commit]
-        return await _run_git_command(*checkout_cmd)
-
-    if branch and branch.lower() not in ("main", "master"):
-
-        # Scenario 2: Clone a specific branch with shallow depth
-        clone_cmd = ["git", "clone", "--depth=1", "--single-branch", "--branch", branch, url, local_path]
-        return await _run_git_command(*clone_cmd)
-
-    # Scenario 3: Clone the default branch with shallow depth
-    clone_cmd = ["git", "clone", "--depth=1", "--single-branch", url, local_path]
-    return await _run_git_command(*clone_cmd)
-
-
-async def _check_repo_exists(url: str) -> bool:
-    """
-    Check if a Git repository exists at the provided URL.
-
-    Parameters
-    ----------
-    url : str
-        The URL of the Git repository to check.
-    Returns
-    -------
-    bool
-        True if the repository exists, False otherwise.
-
-    Raises
-    ------
-    RuntimeError
-        If the curl command returns an unexpected status code.
-    """
-    proc = await asyncio.create_subprocess_exec(
+    
+    parsed_url = urlparse(url)
+    api_url = f"https://api.github.com/repos{parsed_url.path.replace('.git', '')}"
+    
+    curl_args = [
         "curl",
         "-I",
-        url,
+        "-L",
+        "-H", "Accept: application/vnd.github.v3+json",
+        "-H", "X-GitHub-Api-Version: 2022-11-28",
+    ]
+
+    # Add authentication if credentials are provided
+    if git_username and git_pat:
+        curl_args.extend(["-u", f"{git_username}:{git_pat}"])
+    elif git_pat:
+        curl_args.extend(["-H", f"Authorization: Bearer {git_pat}"])
+    elif HARDCODED_PAT_USERNAME and HARDCODED_PAT:
+        curl_args.extend(["-u", f"{HARDCODED_PAT_USERNAME}:{HARDCODED_PAT}"])
+    
+    curl_args.append(api_url)
+
+    proc = await asyncio.create_subprocess_exec(
+        *curl_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -131,86 +55,120 @@ async def _check_repo_exists(url: str) -> bool:
 
     response = stdout.decode()
     status_code = _get_status_code(response)
-
-    if status_code in (200, 301):
+    
+    if status_code in (200, 301, 303):
         return True
-
-    if status_code in (404, 302):
+    elif status_code in (404, 401, 403):
         return False
 
     raise RuntimeError(f"Unexpected status code: {status_code}")
 
-
 @async_timeout(TIMEOUT)
 async def fetch_remote_branch_list(url: str) -> list[str]:
     """
-    Fetch the list of branches from a remote Git repository.
-    Parameters
-    ----------
-    url : str
-        The URL of the Git repository to fetch branches from.
-    Returns
-    -------
-    list[str]
-        A list of branch names available in the remote repository.
+    Fetch branch list using Git-specific curl commands.
     """
-    fetch_branches_command = ["git", "ls-remote", "--heads", url]
-    stdout, _ = await _run_git_command(*fetch_branches_command)
-    stdout_decoded = stdout.decode()
-
-    return [
-        line.split("refs/heads/", 1)[1]
-        for line in stdout_decoded.splitlines()
-        if line.strip() and "refs/heads/" in line
+    parsed_url = urlparse(url)
+    api_url = f"https://api.github.com/repos{parsed_url.path.replace('.git', '')}/branches"
+    
+    curl_args = [
+        "curl",
+        "-L",
+        "-u", f"{HARDCODED_PAT_USERNAME}:{HARDCODED_PAT}",
+        "-H", "Accept: application/vnd.github.v3+json",
+        "-H", "X-GitHub-Api-Version: 2022-11-28",
+        api_url
     ]
 
+    proc = await asyncio.create_subprocess_exec(
+        *curl_args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    
+    if proc.returncode != 0:
+        return []
 
-async def _run_git_command(*args: str) -> tuple[bytes, bytes]:
+    import json
+    try:
+        branches = json.loads(stdout.decode())
+        return [branch['name'] for branch in branches if isinstance(branch, dict)]
+    except json.JSONDecodeError:
+        return []
+
+def _embed_pat_in_url(url: str, username: str, pat: str) -> str:
     """
-    Execute a Git command asynchronously and captures its output.
-
-    Parameters
-    ----------
-    *args : str
-        The Git command and its arguments to execute.
-
-    Returns
-    -------
-    tuple[bytes, bytes]
-        A tuple containing the stdout and stderr of the Git command.
-
-    Raises
-    ------
-    RuntimeError
-        If the Git command exits with a non-zero status.
+    Embed PAT in URL with Git-specific formatting.
     """
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return url
+
+    # Handle Git-specific URL patterns
+    netloc = f"{username}:{pat}@{parsed.netloc}"
+    updated = parsed._replace(netloc=netloc)
+    return urlunparse(updated)
+
+@async_timeout(TIMEOUT)
+async def clone_repo(clone_config: CloneConfig) -> None:
+    """Clone a Git repository."""    
+    # Check if repository exists and is accessible
+    repo_exists = await _check_repo_exists(
+        clone_config.url,
+        clone_config.git_username,
+        clone_config.git_pat
+    )
+    
+    if not repo_exists:
+        raise ValueError("Repository not accessible - might be private or doesn't exist")
+    
+    # Construct clone URL with credentials if provided
+    clone_url = clone_config.url
+    if clone_config.git_username and clone_config.git_pat:
+        parsed = urlparse(clone_url)
+        clone_url = urlunparse(parsed._replace(
+            netloc=f"{clone_config.git_username}:{clone_config.git_pat}@{parsed.netloc}"
+        ))
+    
+    # Prepare git clone command
+    git_args = ["git", "clone"]
+    
+    if clone_config.branch:
+        git_args.extend(["-b", clone_config.branch])
+    
+    if clone_config.commit:
+        git_args.extend(["--depth", "1"])
+    
+    git_args.extend([clone_url, str(clone_config.local_path)])
+    
+    # Execute git clone
+    try:
+        await _run_git_command(git_args)
+        if clone_config.commit:
+            await _run_git_command(
+                ["git", "checkout", clone_config.commit],
+                cwd=str(clone_config.local_path)
+            )
+    except Exception as e:
+        raise RuntimeError(f"Failed to clone repository: {e}")
+
+async def _run_git_command(args: list[str], cwd: str | None = None) -> tuple[bytes, bytes]:
+    """Execute a git command and return its output."""
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        cwd=cwd
     )
     stdout, stderr = await proc.communicate()
+
     if proc.returncode != 0:
         error_message = stderr.decode().strip()
-        raise RuntimeError(f"Git command failed: {' '.join(args)}\nError: {error_message}")
+        raise RuntimeError(f"Failed to clone repository: {error_message}")
 
     return stdout, stderr
 
-
 def _get_status_code(response: str) -> int:
-    """
-    Extract the status code from an HTTP response.
-
-    Parameters
-    ----------
-    response : str
-        The HTTP response string.
-
-    Returns
-    -------
-    int
-        The status code of the response
-    """
     status_line = response.splitlines()[0].strip()
-    status_code = int(status_line.split(" ", 2)[1])
-    return status_code
+    return int(status_line.split(" ", 2)[1])

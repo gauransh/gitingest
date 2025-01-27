@@ -5,6 +5,8 @@
              class="absolute md:block hidden left-0 h-[4.5rem] w-[4.5rem] bottom-0 -translate-x-full ml-3">
         <form class="flex md:flex-row flex-col w-full h-full justify-center items-stretch space-y-5 md:space-y-0 md:space-x-5"
               id="ingestForm"
+              method="POST"
+              enctype="multipart/form-data"
               onsubmit="handleSubmit(event{% if is_index %}, true{% endif %})">
             <div class="relative w-full h-full">
                 <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
@@ -25,8 +27,31 @@
             </div>
             <input type="hidden" name="pattern_type" value="exclude">
             <input type="hidden" name="pattern" value="">
+            <input type="hidden" name="git_username" id="git_username_hidden">
+            <input type="hidden" name="git_pat" id="git_pat_hidden">
+            <input type="hidden" name="max_file_size" id="max_file_size" value="50">
         </form>
         <div class="mt-4 relative z-20 flex flex-wrap gap-4 items-start">
+            <!-- Git credentials -->
+            <div class="w-[200px] sm:w-[250px] mr-9 mt-4">
+                <div class="relative">
+                    <div class="w-full h-full rounded bg-gray-900 translate-y-1 translate-x-1 absolute inset-0 z-10"></div>
+                    <div class="flex flex-col relative z-20 border-[3px] border-gray-900 rounded bg-white">
+                        <input type="text"
+                               id="git_username"
+                               name="git_username"
+                               placeholder="Git username (optional)"
+                               value="{{ git_username if git_username else '' }}"
+                               class="py-2 px-2 bg-[#E8F0FE] focus:outline-none w-full border-b-[3px] border-gray-900">
+                        <input type="password"
+                               id="git_pat"
+                               name="git_pat"
+                               placeholder="Personal access token"
+                               value="{{ git_pat if git_pat else '' }}"
+                               class="py-2 px-2 bg-[#E8F0FE] focus:outline-none w-full">
+                    </div>
+                </div>
+            </div>
             <!-- Pattern selector -->
             <div class="w-[200px] sm:w-[250px] mr-9 mt-4">
                 <div class="relative">

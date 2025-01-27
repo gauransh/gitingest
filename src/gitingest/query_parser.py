@@ -46,57 +46,38 @@ class ParsedQuery:  # pylint: disable=too-many-instance-attributes
     ignore_patterns: set[str] | None = None
     include_patterns: set[str] | None = None
     pattern_type: str | None = None
+    git_username: str | None = None
+    git_pat: str | None = None
 
 
 async def parse_query(
     source: str,
     max_file_size: int,
-    from_web: bool,
-    include_patterns: set[str] | str | None = None,
-    ignore_patterns: set[str] | str | None = None,
+    pattern_type: str = "exclude",
+    pattern: str = "",
+    git_username: str | None = None,
+    git_pat: str | None = None,
+    from_web: bool = False,
 ) -> ParsedQuery:
-    """
-    Parse the input source (URL or path) to extract relevant details for the query.
-
-    This function parses the input source to extract details such as the username, repository name,
-    commit hash, branch name, and other relevant information. It also processes the include and ignore
-    patterns to filter the files and directories to include or exclude from the query.
-
-    Parameters
-    ----------
-    source : str
-        The source URL or file path to parse.
-    max_file_size : int
-        The maximum file size in bytes to include.
-    from_web : bool
-        Flag indicating whether the source is a web URL.
-    include_patterns : set[str] | str | None, optional
-        Patterns to include, by default None. Can be a set of strings or a single string.
-    ignore_patterns : set[str] | str | None, optional
-        Patterns to ignore, by default None. Can be a set of strings or a single string.
-
-    Returns
-    -------
-    ParsedQuery
-        A dataclass object containing the parsed details of the repository or file path.
-    """
-
-    # Determine the parsing method based on the source type
-    if from_web or urlparse(source).scheme in ("https", "http") or any(h in source for h in KNOWN_GIT_HOSTS):
-        # We either have a full URL or a domain-less slug
-        parsed_query = await _parse_repo_source(source)
-    else:
-        # Local path scenario
-        parsed_query = _parse_path(source)
+    """Parse a query for repository ingestion."""
+    parsed_query = await _parse_repo_source(source)
+    parsed_query.git_username = git_username
+    parsed_query.git_pat = git_pat
+    
+    parsed_query = await _parse_repo_source(source)
+    
+    # Add credentials to parsed query
+    parsed_query.git_username = git_username
+    parsed_query.git_pat = git_pat
 
     # Combine default ignore patterns + custom patterns
     ignore_patterns_set = DEFAULT_IGNORE_PATTERNS.copy()
-    if ignore_patterns:
-        ignore_patterns_set.update(_parse_patterns(ignore_patterns))
+    if parsed_query.ignore_patterns:
+        ignore_patterns_set.update(_parse_patterns(parsed_query.ignore_patterns))
 
     # Process include patterns and override ignore patterns accordingly
-    if include_patterns:
-        parsed_include = _parse_patterns(include_patterns)
+    if parsed_query.include_patterns:
+        parsed_include = _parse_patterns(parsed_query.include_patterns)
         ignore_patterns_set = _override_ignore_patterns(ignore_patterns_set, include_patterns=parsed_include)
     else:
         parsed_include = None
@@ -115,6 +96,9 @@ async def parse_query(
         max_file_size=max_file_size,
         ignore_patterns=ignore_patterns_set,
         include_patterns=parsed_include,
+        pattern_type=pattern_type,
+        git_username=parsed_query.git_username,
+        git_pat=parsed_query.git_pat
     )
 
 
@@ -174,6 +158,8 @@ async def _parse_repo_source(source: str) -> ParsedQuery:
         local_path=local_path,
         slug=slug,
         id=_id,
+        git_username=user_name,
+        git_pat=None,
     )
 
     remaining_parts = parsed_url.path.strip("/").split("/")[2:]
@@ -366,6 +352,8 @@ def _parse_path(path_str: str) -> ParsedQuery:
         local_path=path_obj,
         slug=f"{path_obj.parent.name}/{path_obj.name}",
         id=str(uuid.uuid4()),
+        git_username=None,
+        git_pat=None,
     )
 
 

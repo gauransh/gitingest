@@ -31,82 +31,57 @@ function copyText(className) {
 
 function handleSubmit(event, showLoading = false) {
     event.preventDefault();
-    const form = event.target || document.getElementById('ingestForm');
-    if (!form) return;
-
-    const submitButton = form.querySelector('button[type="submit"]');
-    if (!submitButton) return;
-
-    const formData = new FormData(form);
-
-    // Update file size
+    
+    // Get form and elements
+    const form = document.getElementById('ingestForm');
+    const gitUsername = document.getElementById('git_username');
+    const gitPat = document.getElementById('git_pat');
     const slider = document.getElementById('file_size');
-    if (slider) {
-        formData.delete('max_file_size');
-        formData.append('max_file_size', slider.value);
+    
+    // Create FormData
+    const formData = new FormData(form);
+    
+    // Add required fields
+    formData.set('max_file_size', slider ? slider.value : '50');
+    formData.set('slider_position', slider ? slider.value : '50');
+    
+    // Update credentials if they exist
+    if (gitUsername && gitPat) {
+        const usernameValue = gitUsername.value.trim();
+        const patValue = gitPat.value.trim();
+        
+        // Update hidden fields
+        document.getElementById('git_username_hidden').value = usernameValue;
+        document.getElementById('git_pat_hidden').value = patValue;
+        
+        // Update formData
+        formData.set('git_username', usernameValue);
+        formData.set('git_pat', patValue);
     }
 
-    // Update pattern type and pattern
-    const patternType = document.getElementById('pattern_type');
-    const pattern = document.getElementById('pattern');
-    if (patternType && pattern) {
-        formData.delete('pattern_type');
-        formData.delete('pattern');
-        formData.append('pattern_type', patternType.value);
-        formData.append('pattern', pattern.value);
-    }
-
-    const originalContent = submitButton.innerHTML;
-    const currentStars = document.getElementById('github-stars')?.textContent;
-
+    // Show loading state if requested
     if (showLoading) {
-        submitButton.disabled = true;
-        submitButton.innerHTML = `
-            <div class="flex items-center justify-center">
-                <svg class="animate-spin h-5 w-5 text-gray-900" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="ml-2">Processing...</span>
-            </div>
-        `;
-        submitButton.classList.add('bg-[#ffb14d]');
+        document.getElementById('loading')?.classList.remove('hidden');
     }
 
-    // Submit the form
-    fetch(form.action, {
+    // Send the request
+    fetch('/', {
         method: 'POST',
         body: formData
     })
-        .then(response => response.text())
-        .then(html => {
-            // Store the star count before updating the DOM
-            const starCount = currentStars;
-
-            // Replace the entire body content with the new HTML
-            document.body.innerHTML = html;
-
-            // Wait for next tick to ensure DOM is updated
-            setTimeout(() => {
-                // Reinitialize slider functionality
-                initializeSlider();
-
-                const starsElement = document.getElementById('github-stars');
-                if (starsElement && starCount) {
-                    starsElement.textContent = starCount;
-                }
-
-                // Scroll to results if they exist
-                const resultsSection = document.querySelector('[data-results]');
-                if (resultsSection) {
-                    resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            }, 0);
-        })
-        .catch(error => {
-            submitButton.disabled = false;
-            submitButton.innerHTML = originalContent;
-        });
+    .then(response => response.text())
+    .then(html => {
+        document.documentElement.innerHTML = html;
+        if (showLoading) {
+            document.getElementById('loading')?.classList.add('hidden');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        if (showLoading) {
+            document.getElementById('loading')?.classList.add('hidden');
+        }
+    });
 }
 
 function copyFullDigest() {

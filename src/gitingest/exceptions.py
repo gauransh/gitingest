@@ -56,3 +56,9 @@ class InvalidNotebookError(Exception):
 
     def __init__(self, message: str) -> None:
         super().__init__(message)
+
+class RepositoryNotFoundError(Exception):
+    """Exception raised when a repository is not found."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)

@@ -17,10 +17,11 @@ RUN apt-get update \
 FROM python:3.12-slim
 
 # Set Python environment variables
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=9900
 
-# Install Git
+# Install git and clean up in one layer
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl\
     && rm -rf /var/lib/apt/lists/*
@@ -30,15 +31,21 @@ WORKDIR /app
 # Create a non-root user
 RUN useradd -m -u 1000 appuser
 
+# Copy Python packages and source code
 COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
 COPY src/ ./
 
+# Copy entrypoint script and set permissions
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Change ownership of the application files
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app /entrypoint.sh
 
 # Switch to non-root user
 USER appuser
 
-EXPOSE 8000
+# Expose the correct port
+EXPOSE ${PORT}
 
-CMD ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/entrypoint.sh"]

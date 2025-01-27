@@ -17,6 +17,16 @@ from gitingest.repository_ingest import ingest
 @click.option("--exclude-pattern", "-e", multiple=True, help="Patterns to exclude")
 @click.option("--include-pattern", "-i", multiple=True, help="Patterns to include")
 @click.option("--branch", "-b", default=None, help="Branch to clone and ingest")
+@click.option(
+    "--git-username",
+    envvar="GIT_USERNAME",
+    help="Git username for authentication",
+)
+@click.option(
+    "--git-pat",
+    envvar="GIT_PAT",
+    help="Git Personal Access Token for authentication",
+)
 def main(
     source: str,
     output: str | None,
@@ -24,6 +34,8 @@ def main(
     exclude_pattern: tuple[str, ...],
     include_pattern: tuple[str, ...],
     branch: str | None,
+    git_username: str | None,
+    git_pat: str | None,
 ):
     """
     Main entry point for the CLI. This function is called when the CLI is run as a script.
@@ -45,9 +57,13 @@ def main(
         A tuple of patterns to include during the analysis. Only files matching these patterns will be processed.
     branch : str | None
         The branch to clone (optional).
+    git_username : str | None
+        The Git username for authentication.
+    git_pat : str | None
+        The Git Personal Access Token for authentication.
     """
     # Main entry point for the CLI. This function is called when the CLI is run as a script.
-    asyncio.run(_async_main(source, output, max_size, exclude_pattern, include_pattern, branch))
+    asyncio.run(_async_main(source, output, max_size, exclude_pattern, include_pattern, branch, git_username, git_pat))
 
 
 async def _async_main(
@@ -57,6 +73,8 @@ async def _async_main(
     exclude_pattern: tuple[str, ...],
     include_pattern: tuple[str, ...],
     branch: str | None,
+    git_username: str | None,
+    git_pat: str | None,
 ) -> None:
     """
     Analyze a directory or repository and create a text dump of its contents.
@@ -79,6 +97,10 @@ async def _async_main(
         A tuple of patterns to include during the analysis. Only files matching these patterns will be processed.
     branch : str | None
         The branch to clone (optional).
+    git_username : str | None
+        The Git username for authentication.
+    git_pat : str | None
+        The Git Personal Access Token for authentication.
 
     Raises
     ------
@@ -92,7 +114,7 @@ async def _async_main(
 
         if not output:
             output = OUTPUT_FILE_PATH
-        summary, _, _ = await ingest(source, max_size, include_patterns, exclude_patterns, branch, output=output)
+        summary, _, _ = await ingest(source, max_size, include_patterns, exclude_patterns, branch, output=output, git_username=git_username, git_pat=git_pat)
 
         click.echo(f"Analysis complete! Output written to: {output}")
         click.echo("\nSummary:")

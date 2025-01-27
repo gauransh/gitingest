@@ -18,6 +18,8 @@ async def process_query(
     slider_position: int,
     pattern_type: str = "exclude",
     pattern: str = "",
+    git_username: str | None = None,
+    git_pat: str | None = None,
     is_index: bool = False,
 ) -> _TemplateResponse:
     """
@@ -38,6 +40,10 @@ async def process_query(
         Type of pattern to use, either "include" or "exclude" (default is "exclude").
     pattern : str
         Pattern to include or exclude in the query, depending on the pattern type.
+    git_username : str | None
+        Git username for authentication.
+    git_pat : str | None
+        Git personal access token for authentication.
     is_index : bool
         Flag indicating whether the request is for the index page (default is False).
 
@@ -51,6 +57,12 @@ async def process_query(
     ValueError
         If an invalid pattern type is provided.
     """
+    # Log the raw form data
+    form_data = await request.form()    
+    # Convert empty strings to None but preserve non-empty values
+    git_username = form_data.get('git_username') if form_data.get('git_username', '').strip() else None
+    git_pat = form_data.get('git_pat') if form_data.get('git_pat', '').strip() else None
+        
     if pattern_type == "include":
         include_patterns = pattern
         exclude_patterns = None
@@ -74,12 +86,14 @@ async def process_query(
     }
 
     try:
-        parsed_query: ParsedQuery = await parse_query(
+        parsed_query = await parse_query(
             source=input_text,
-            max_file_size=max_file_size,
+            max_file_size=slider_position * 1000,
+            pattern_type=pattern_type,
+            pattern=pattern,
+            git_username=git_username,
+            git_pat=git_pat,
             from_web=True,
-            include_patterns=include_patterns,
-            ignore_patterns=exclude_patterns,
         )
         if not parsed_query.url:
             raise ValueError("The 'url' parameter is required.")
@@ -89,7 +103,13 @@ async def process_query(
             local_path=str(parsed_query.local_path),
             commit=parsed_query.commit,
             branch=parsed_query.branch,
+            git_username=git_username,
+            git_pat=git_pat
         )
+
+        # Debug log
+        print(f"Cloning with credentials - username: {'yes' if clone_config.git_username else 'no'}, pat: {'yes' if clone_config.git_pat else 'no'}")
+
         await clone_repo(clone_config)
         summary, tree, content = run_ingest_query(parsed_query)
         with open(f"{clone_config.local_path}.txt", "w", encoding="utf-8") as f:

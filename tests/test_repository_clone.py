@@ -362,3 +362,32 @@ async def test_clone_branch_with_slashes(tmp_path):
                 clone_config.url,
                 clone_config.local_path,
             )
+
+
+@pytest.mark.asyncio
+async def test_clone_repo_with_specific_branch() -> None:
+    """
+    Test cloning a repository with a specific branch.
+    
+    Given a valid URL and a branch name:
+    When `clone_repo` is called,
+    Then the repository should be cloned at that branch.
+    """
+    clone_config = CloneConfig(
+        url="https://github.com/user/repo",
+        local_path="/tmp/repo",
+        branch="feature-branch",  # Specify the branch to clone
+    )
+    
+    with patch("gitingest.repository_clone._check_repo_exists", return_value=True):
+        with patch("gitingest.repository_clone._run_git_command", new_callable=AsyncMock) as mock_exec:
+            await clone_repo(clone_config)
+            
+            mock_exec.assert_called_once_with(
+                "git",
+                "clone",
+                "-b",
+                "feature-branch",  # Ensure the branch is specified
+                clone_config.url,
+                clone_config.local_path,
+            )

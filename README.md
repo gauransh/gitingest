@@ -85,10 +85,10 @@ By default, this won't write a file but can be enabled with the `output` argumen
 2. Run the container:
 
    ``` bash
-   docker run -d --name gitingest -p 8000:8000 gitingest
+   docker run -d --name gitingest -p 9900:9900 gitingest
    ```
 
-The application will be available at `http://localhost:8000`.
+The application will be available at `http://localhost:9900`.
 
 If you are hosting it on a domain, you can specify the allowed hostnames via env variable `ALLOWED_HOSTS`.
 

@@ -20,6 +20,7 @@ async def process_query(
     pattern: str = "",
     git_username: str | None = None,
     git_pat: str | None = None,
+    branch: str | None = None,
     is_index: bool = False,
 ) -> _TemplateResponse:
     """
@@ -62,6 +63,7 @@ async def process_query(
     # Convert empty strings to None but preserve non-empty values
     git_username = form_data.get('git_username') if form_data.get('git_username', '').strip() else None
     git_pat = form_data.get('git_pat') if form_data.get('git_pat', '').strip() else None
+    branch = form_data.get('branch') if form_data.get('branch', '').strip() else None  # Get branch from form data
         
     if pattern_type == "include":
         include_patterns = pattern
@@ -98,11 +100,14 @@ async def process_query(
         if not parsed_query.url:
             raise ValueError("The 'url' parameter is required.")
 
+        selected_branch = branch if branch else parsed_query.branch  # prioritize branch argument
+        parsed_query.branch = selected_branch
+
         clone_config = CloneConfig(
             url=parsed_query.url,
             local_path=str(parsed_query.local_path),
             commit=parsed_query.commit,
-            branch=parsed_query.branch,
+            branch=selected_branch,  # Use the selected branch
             git_username=git_username,
             git_pat=git_pat
         )
